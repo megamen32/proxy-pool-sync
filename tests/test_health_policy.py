@@ -42,3 +42,36 @@ def test_reserve_sets_cooldown_window():
     state=ProxyHealthState()
     ProxyHealthPolicy().reserve(state,now=10,seconds=30)
     assert state.reserved_until == 40
+
+
+def test_structured_verdict_can_disable_immediately_and_set_cooldown():
+    from proxy_pool_sync import FailureKind, FailureVerdict
+
+    policy = ProxyHealthPolicy(max_failures_before_disable=5)
+    auth_state = ProxyHealthState()
+    policy.mark_verdict(
+        auth_state,
+        now=10,
+        verdict=FailureVerdict(FailureKind.PROXY_AUTH, "407", disable_immediately=True),
+    )
+    assert not auth_state.is_active
+    assert auth_state.disabled_reason == "proxy_auth_failed"
+
+    timeout_state = ProxyHealthState()
+    policy.mark_verdict(
+        timeout_state,
+        now=20,
+        verdict=FailureVerdict(FailureKind.DESTINATION_TIMEOUT, "timeout", cooldown_seconds=30),
+    )
+    assert timeout_state.is_active
+    assert timeout_state.fail_count == 1
+    assert timeout_state.reserved_until == 50
+
+
+def test_account_verdict_does_not_poison_proxy_health():
+    from proxy_pool_sync import FailureVerdict
+
+    state = ProxyHealthState()
+    ProxyHealthPolicy().mark_verdict(state, now=1, verdict=FailureVerdict.account_error("revoked"))
+    assert state.fail_count == 0
+    assert state.is_active

@@ -33,3 +33,33 @@ def test_replace_raw_lines_keeps_legacy_no_scheme_form(tmp_path):
     pool = FileProxyPool(tmp_path / "legacy.txt")
     pool.replace_raw_lines(["1.2.3.4:1085", "socks5://5.6.7.8:1080"])
     assert (tmp_path / "legacy.txt").read_text() == "1.2.3.4:1085\nsocks5://5.6.7.8:1080\n"
+
+
+def test_pool_update_policy_rejects_catastrophic_drop_and_keeps_old_file(tmp_path):
+    from proxy_pool_sync import PoolUpdatePolicy
+
+    pool = FileProxyPool(tmp_path / "safe.txt")
+    pool.replace_lines([f"http://10.0.0.{i}:80" for i in range(1, 11)])
+    try:
+        pool.replace_lines(
+            ["http://10.0.0.1:80", "http://10.0.0.2:80"],
+            update_policy=PoolUpdatePolicy(min_count=1, max_drop_ratio=0.5),
+        )
+    except ValueError as exc:
+        assert "shrank" in str(exc)
+    else:
+        raise AssertionError("catastrophic shrink must be rejected")
+    assert len(pool.load()) == 10
+
+
+def test_pool_update_policy_force_allows_intentional_drop(tmp_path):
+    from proxy_pool_sync import PoolUpdatePolicy
+
+    pool = FileProxyPool(tmp_path / "safe.txt")
+    pool.replace_lines([f"http://10.0.0.{i}:80" for i in range(1, 11)])
+    result = pool.replace_lines(
+        ["http://10.0.0.1:80"],
+        update_policy=PoolUpdatePolicy(max_drop_ratio=0.1),
+        force=True,
+    )
+    assert result == ["http://10.0.0.1:80"]

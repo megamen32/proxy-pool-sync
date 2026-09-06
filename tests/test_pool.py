@@ -27,3 +27,9 @@ def test_sanitize_proxy_lines_preserves_legacy_scheme_inference_input():
         "1.2.3.4:1085",
         "socks5://5.6.7.8:1080",
     ]
+
+
+def test_replace_raw_lines_keeps_legacy_no_scheme_form(tmp_path):
+    pool = FileProxyPool(tmp_path / "legacy.txt")
+    pool.replace_raw_lines(["1.2.3.4:1085", "socks5://5.6.7.8:1080"])
+    assert (tmp_path / "legacy.txt").read_text() == "1.2.3.4:1085\nsocks5://5.6.7.8:1080\n"

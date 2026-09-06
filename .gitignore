@@ -7,3 +7,4 @@ dist/
 build/
 .env
 proxies.txt
+*.bak.*

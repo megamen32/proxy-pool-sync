@@ -76,3 +76,19 @@ class FileProxyPool:
 
     def replace_lines(self, lines: list[str], *, allow_empty: bool = False) -> list[str]:
         return self.replace_text("\n".join(lines) + ("\n" if lines else ""), allow_empty=allow_empty)
+
+    def replace_raw_lines(self, lines: list[str], *, allow_empty: bool = False) -> list[str]:
+        """Atomically replace the file while preserving caller-owned line syntax.
+
+        Use this when a legacy consumer intentionally owns proxy scheme inference.
+        Blank/comment stripping and deduplication remain available through
+        :func:`sanitize_proxy_lines`.
+        """
+        cleaned = sanitize_proxy_lines("\n".join(lines))
+        if not cleaned and not allow_empty:
+            raise ValueError("proxy export is empty")
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = self.path.with_suffix(self.path.suffix + ".tmp")
+        temporary.write_text("\n".join(cleaned) + ("\n" if cleaned else ""), encoding="utf-8")
+        os.replace(temporary, self.path)
+        return cleaned

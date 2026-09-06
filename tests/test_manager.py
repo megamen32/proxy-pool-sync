@@ -21,3 +21,22 @@ def test_callback_auth():
     assert callback_is_authorized("127.0.0.1", None)
     assert callback_is_authorized("10.0.0.2", "Bearer x", bearer_token="x")
     assert not callback_is_authorized("10.0.0.2", "Bearer bad", bearer_token="x")
+
+
+def test_callback_auth_accepts_basic_credentials():
+    import base64
+    token = base64.b64encode(b"alice:secret").decode()
+    assert callback_is_authorized(
+        "10.0.0.2",
+        f"Basic {token}",
+        bearer_token="",
+        basic_username="alice",
+        basic_password="secret",
+    )
+    assert not callback_is_authorized(
+        "10.0.0.2",
+        f"Basic {token}",
+        bearer_token="",
+        basic_username="alice",
+        basic_password="wrong",
+    )

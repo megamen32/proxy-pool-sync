@@ -1,0 +1,35 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "proxy-pool-sync"
+version = "0.1.0"
+description = "Small async toolkit for synchronizing, validating and distributing proxy pools."
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [{name = "megamen32"}]
+dependencies = [
+  "httpx>=0.27,<1",
+  "python-socks[asyncio]>=2.7,<3",
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Internet :: Proxy Servers",
+]
+
+[project.urls]
+Homepage = "https://github.com/megamen32/proxy-pool-sync"
+Repository = "https://github.com/megamen32/proxy-pool-sync"
+
+[project.optional-dependencies]
+test = ["pytest>=8"]
+
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/proxy_pool_sync"]

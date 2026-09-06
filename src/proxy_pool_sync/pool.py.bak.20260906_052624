@@ -25,22 +25,6 @@ def normalize_proxy_line(raw: str) -> str | None:
     return text
 
 
-def sanitize_proxy_lines(text: str) -> list[str]:
-    """Strip blanks/comments and deduplicate while preserving each raw proxy line.
-
-    Useful for legacy consumers that own scheme inference or custom parsing.
-    """
-    result: list[str] = []
-    seen: set[str] = set()
-    for raw in str(text or "").splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#") or line in seen:
-            continue
-        seen.add(line)
-        result.append(line)
-    return result
-
-
 def parse_proxy_export(text: str) -> list[str]:
     result: list[str] = []
     seen: set[str] = set()

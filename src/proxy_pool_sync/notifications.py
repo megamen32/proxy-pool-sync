@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
+from collections.abc import Callable
 from typing import Any, Iterable
 
 import httpx
@@ -22,6 +23,59 @@ class NotificationResult:
     total: int
     sent: int
     failed: int
+
+
+def _value(obj: Any, key: str, default: Any = None) -> Any:
+    if isinstance(obj, dict):
+        return obj.get(key, default)
+    return getattr(obj, key, default)
+
+
+def normalize_notification_targets(
+    raw_targets: Iterable[Any],
+    *,
+    on_warning: Callable[[str], None] | None = None,
+    default_auth_type: str = "bearer",
+) -> list[NotificationTarget]:
+    """Convert dict/object config entries into validated notification targets."""
+    def warn(message: str) -> None:
+        if on_warning is not None:
+            on_warning(message)
+
+    targets: list[NotificationTarget] = []
+    for raw in raw_targets:
+        url = str(_value(raw, "url", "") or "").strip()
+        if not url:
+            warn("notification target skipped: missing url")
+            continue
+        method = str(_value(raw, "method", "POST") or "POST").strip().upper()
+        auth_type = str(_value(raw, "auth_type", default_auth_type) or default_auth_type).strip().lower()
+        auth = _value(raw, "auth", None)
+        if method not in {"GET", "POST", "PUT", "PATCH", "DELETE"}:
+            warn(f"notification target skipped: unsupported method={method} url={url}")
+            continue
+        if auth_type not in {"bearer", "basic", "none"}:
+            warn(f"notification target skipped: unsupported auth_type={auth_type} url={url}")
+            continue
+        bearer_token = ""
+        username = ""
+        password = ""
+        if auth_type == "bearer":
+            bearer_token = str(_value(auth, "token", "") if auth is not None else "").strip()
+            if not bearer_token:
+                warn(f"notification target skipped: bearer token missing url={url}")
+                continue
+        elif auth_type == "basic":
+            username = str(_value(auth, "username", "") if auth is not None else "").strip()
+            password = str(_value(auth, "password", "") if auth is not None else "").strip()
+            if not username or not password:
+                warn(f"notification target skipped: basic auth missing url={url}")
+                continue
+        targets.append(NotificationTarget(
+            url=url, method=method, auth_type=auth_type,
+            bearer_token=bearer_token, username=username, password=password,
+        ))
+    return targets
 
 
 async def _send(target: NotificationTarget, payload: dict[str, Any], *, timeout: float) -> None:

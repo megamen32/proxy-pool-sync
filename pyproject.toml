@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "proxy-pool-sync"
-version = "0.3.0"
+version = "0.4.0"
 description = "Small async toolkit for synchronizing, validating and distributing proxy pools."
 readme = "README.md"
 requires-python = ">=3.10"

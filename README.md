@@ -135,3 +135,13 @@ await notify_targets(
 ## License
 
 MIT.
+
+## Shared hop transport and account binding notifications
+
+`transport` provides loopback-only SSH forwards, a scoped nftables renderer and a bounded TLS exit-IP probe. The caller owns installation and runtime budgets; the renderer rejects broad cgroup rules. `storage.write_private_text` atomically replaces credential files with mode 0600.
+
+`BindingJournal` keeps one private durable outbox/projection **per application**, keyed by native Telegram user ID rather than a local database row or cabinet ID. `BindingPeer` exchanges credential-free events over an authenticated API. Delivery is idempotent, ordered by revision/source and coalesces obsolete queued assignments. Tokens and proxy credentials stay local. Remote peers require HTTPS; the reference HTTP server binds to loopback.
+
+The receiver stores a preference. At its next idle connection, under its own account lock, it can call `binding_consumer.checked_preference`: only a candidate already in its own pool with a matching verified exit is returned. The caller must finish read transactions before network checks and enforce its existing native reservation/capacity checks before persisting. Busy connections are never interrupted. Missing peer API, unknown identity, unavailable exit or incompatible pool leaves the current assignment intact. An API acceptance is not an application receipt.
+
+The exit probe verifies Internet egress; applications must also run their normal destination-specific connectivity check. This package does not perform Telegram authentication, send messages or transfer session keys.

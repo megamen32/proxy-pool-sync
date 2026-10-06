@@ -104,3 +104,14 @@ def test_offline_peer_coalesces_obsolete_changes_per_account(tmp_path):
     for number in range(1, 20):
         latest = a.observe(999, f'http://198.51.100.{number}:8080')
     assert a.pending() == [latest]
+
+
+def test_learning_old_exit_does_not_supersede_pending_peer_preference(tmp_path):
+    a, b = pair(tmp_path)
+    b.observe(999, 'http://198.51.100.2:8085')
+    event = a.observe(999, 'http://198.51.100.1:8080', '198.51.100.1')
+    # Advance origin revision to beat the independent initial tie.
+    event = a.observe(999, 'http://198.51.100.3:8080', '198.51.100.3')
+    b.receive(event, allowed_source='autosell')
+    assert b.observe(999, 'http://198.51.100.2:8085', '198.51.100.2') is None
+    assert b.preferred(999) == event

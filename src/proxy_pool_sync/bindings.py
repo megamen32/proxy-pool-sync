@@ -130,6 +130,11 @@ class BindingJournal:
                 return None
             if desired and old is None and desired.source != self.source:
                 return None
+            if (desired and desired.source != self.source and old and old[0] == proxy_ref
+                    and old[1] is None):
+                # Learning the current exit after an incoming preference must not
+                # turn a pending peer rebind into a competing local assignment.
+                return None
             revision = desired.revision + 1 if desired else 1
             key = hashlib.sha256(f"{self.scope}:{account}:{self.source}:{revision}:{proxy_ref}:{exit_ip}".encode()).hexdigest()
             event = BindingEvent(key, self.scope, account, self.source, revision, proxy_ref, exit_ip)

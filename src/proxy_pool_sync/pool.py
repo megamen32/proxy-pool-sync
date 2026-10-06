@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
@@ -81,6 +82,20 @@ class FileProxyPool:
         except FileNotFoundError:
             return []
 
+    def _write_private_text(self, text: str) -> None:
+        """Publish credentials atomically with owner-only access, cleaning failed writes."""
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        descriptor, temporary = tempfile.mkstemp(prefix=f".{self.path.name}.", dir=self.path.parent)
+        try:
+            with os.fdopen(descriptor, "w", encoding="utf-8") as output:
+                output.write(text)
+            os.replace(temporary, self.path)
+        finally:
+            try:
+                os.unlink(temporary)
+            except FileNotFoundError:
+                pass
+
     def replace_text(
         self,
         text: str,
@@ -94,10 +109,7 @@ class FileProxyPool:
             raise ValueError("proxy export is empty")
         if update_policy is not None:
             update_policy.validate(self.load(), proxies, force=force)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = self.path.with_suffix(self.path.suffix + ".tmp")
-        temporary.write_text("\n".join(proxies) + ("\n" if proxies else ""), encoding="utf-8")
-        os.replace(temporary, self.path)
+        self._write_private_text("\n".join(proxies) + ("\n" if proxies else ""))
         return proxies
 
     def replace_lines(
@@ -119,8 +131,5 @@ class FileProxyPool:
         cleaned = sanitize_proxy_lines("\n".join(lines))
         if not cleaned and not allow_empty:
             raise ValueError("proxy export is empty")
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = self.path.with_suffix(self.path.suffix + ".tmp")
-        temporary.write_text("\n".join(cleaned) + ("\n" if cleaned else ""), encoding="utf-8")
-        os.replace(temporary, self.path)
+        self._write_private_text("\n".join(cleaned) + ("\n" if cleaned else ""))
         return cleaned

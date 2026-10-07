@@ -6,4 +6,6 @@ User decision: reuse one proxy exit for the same native Telegram identity where 
 
 Implemented: common SSH forward and scoped redirect renderers, private atomic writer, bounded exit probe, durable idempotent binding journal/outbox, authenticated metadata API and checked next-connection preference helper. Database writes and native connection locks remain application responsibilities.
 
-Integration blocker: TGC canonical working main contains unpublished work belonging to another owner. Its native consumer hook must be integrated with that owner; API acceptance alone is not proof of native rebind. No foreign work is removed or published.
+Current remaining work: connect the checked-preference helper to native account-locked connection factories and verify a coordinated application release. The earlier unpublished TGC ancestry has since been reconciled by its owner. API acceptance alone is not proof of native rebind. Foreign dependency and cabinet work stays preserved.
+
+Shared-library source tests: 50 passed. Application-independent hop controllers use the shared transport renderer; the metadata exchange runs with separate read-only native adapters. Live native rebind is not claimed.

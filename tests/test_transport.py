@@ -55,3 +55,13 @@ def test_actual_exit_is_read_from_verified_tls_response_and_socket_closed():
 def test_exit_probe_failure_does_not_return_credentials_or_disable_proxy():
     with patch('socket.create_connection', side_effect=OSError('private credential in upstream error')):
         assert probe_exit_ip('http://fixture:fixture-secret@198.51.100.1:8085') is None
+
+
+def test_transport_only_consumer_does_not_load_unneeded_http_runtime():
+    import subprocess
+    import sys
+    result = subprocess.run([sys.executable, '-c',
+        "import sys; from proxy_pool_sync.transport import render_scoped_redirect; "
+        "assert 'httpx' not in sys.modules; assert 'python_socks' not in sys.modules; "
+        "assert 'proxy_pool_sync.manager' not in sys.modules"], check=True, timeout=5)
+    assert result.returncode == 0

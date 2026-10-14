@@ -2,6 +2,11 @@
 from importlib import import_module
 
 _EXPORTS = {
+    'AccountProxyUnavailable': ('account_selection', 'AccountProxyUnavailable'),
+    'AccountProxyValidation': ('account_selection', 'AccountProxyValidation'),
+    'NoAccountProxy': ('account_selection', 'NoAccountProxy'),
+    'free_exit_candidates': ('account_selection', 'free_exit_candidates'),
+    'select_account_proxy': ('account_selection', 'select_account_proxy'),
     'callback_is_authorized': ('auth', 'callback_is_authorized'),
     'FailureKind': ('health', 'FailureKind'),
     'FailureVerdict': ('health', 'FailureVerdict'),

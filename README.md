@@ -6,6 +6,7 @@ Small async Python toolkit for applications that repeatedly need the same proxy-
 - atomically replace a local pool;
 - normalize/deduplicate HTTP and SOCKS proxy URLs;
 - choose or atomically lease a least-used healthy proxy;
+- keep an account on its working proxy and try other free exits after a verified proxy failure;
 - health-check a proxy by opening a TCP tunnel to a real destination;
 - keep framework-agnostic health state with structured failure verdicts and cooldowns;
 - reject suspicious upstream pool collapses before they overwrite a healthy pool;
@@ -93,6 +94,35 @@ await manager.report_failure(
     FailureVerdict(FailureKind.PROXY_AUTH, "proxy authentication failed", disable_immediately=True),
 )
 ```
+
+## Sticky account selection and free exits
+
+`free_exit_candidates` filters occupied or unmapped exits and spreads a bounded
+probe set across the whole inventory. `select_account_proxy` validates the
+existing assignment first, then tries those candidates. An app supplies the
+Telegram check and an atomic `bind` callback backed by its own database:
+
+```python
+from proxy_pool_sync import AccountProxyValidation, free_exit_candidates, select_account_proxy
+
+candidates = free_exit_candidates(
+    pool.load(), await account_usage(), exit_key=physical_exit_for_proxy,
+    busy_exits=await peer_project_exits(), max_accounts=1, limit=64,
+)
+proxy = await select_account_proxy(
+    current=account.proxy_url,
+    candidates=candidates,
+    validate=check_telegram_for_this_account,  # returns AccountProxyValidation
+    bind=bind_if_still_free,                   # atomic, returns bool
+    report_failure=mark_proxy_failed,
+)
+```
+
+The library never moves credentials, assumes two authorizations share one IP,
+or persists a binding before validation. The application must verify the
+observed exit IP after probing and enforce its physical-account capacity in
+`bind`; `AccountProxyValidation(account_unavailable=True, ok=False)` stops
+proxy rotation when the authorization itself has failed.
 
 ## Callback endpoint adapter
 

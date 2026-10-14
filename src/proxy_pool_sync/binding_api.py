@@ -51,7 +51,7 @@ class BindingPeer:
 
     def preferences(self) -> list[BindingEvent]:
         """Read the bounded receiver snapshot through the same authenticated API."""
-        response = httpx.get(self.url, timeout=2,
+        response = httpx.get(self.url, timeout=5,
                              headers={"Authorization": f"Bearer {self.bearer_token}"}, follow_redirects=False)
         response.raise_for_status()
         rows = response.json().get("bindings")

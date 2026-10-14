@@ -71,3 +71,40 @@ def test_file_fallback_does_not_bypass_http_rejection_or_create_another_store(tm
         pass
     else:
         raise AssertionError('fallback must not create an independent journal')
+
+
+def test_local_peer_endpoint_uses_same_api_after_remote_bridge_stops(tmp_path):
+    a = BindingJournal(tmp_path / 'a.db', scope='fixture', source='autosell')
+    b = BindingJournal(tmp_path / 'b.db', scope='fixture', source='tgc')
+    event = a.observe(999991, 'http://198.51.100.1:8080', '198.51.100.1')
+    token_a, token_b = 'a' * 40, 'b' * 40
+    remote = binding_server(('127.0.0.1', 0), b, bearer_token=token_b, allowed_source='autosell')
+    remote_thread = threading.Thread(target=remote.serve_forever)
+    remote_thread.start()
+    local = binding_server(
+        ('127.0.0.1', 0), a, bearer_token=token_a, allowed_source='tgc',
+        peer=BindingPeerWithFileFallback(
+            BindingPeer(f'http://127.0.0.1:{remote.server_port}/v1/bindings', token_b),
+            BindingFilePeer(b.path, 'fixture', 'tgc', 'autosell'),
+        ),
+    )
+    local_thread = threading.Thread(target=local.serve_forever)
+    local_thread.start()
+    try:
+        local_peer = BindingPeer(f'http://127.0.0.1:{local.server_port}/v1/peer-bindings', token_a)
+        assert local_peer.deliver(event)
+        assert b.preferred(999991) == event
+        remote.shutdown()
+        remote_thread.join(3)
+        remote.server_close()
+        assert local_peer.deliver(event)  # Existing receiver file remains authoritative.
+        assert local_peer.preferred(999991) == event
+        assert local_peer.preferences() == [event]
+    finally:
+        local.shutdown()
+        local_thread.join(3)
+        local.server_close()
+        if remote_thread.is_alive():
+            remote.shutdown()
+            remote_thread.join(3)
+            remote.server_close()

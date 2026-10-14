@@ -137,6 +137,13 @@ or proxy passwords. If the receiver application is down, this confirms only
 durable binding metadata; its native account import still needs a later
 consumer receipt.
 
+When `binding_server(..., peer=...)` is configured, the application can use
+its **own** loopback bridge at `/v1/peer-bindings` with the same `BindingPeer`
+client and token as `/v1/bindings`. The bridge reaches the other bridge by
+HTTP when available and uses that receiver's existing journal when HTTP is
+down. This keeps peer journal write access inside the two bridge services;
+neither application needs a mount of the other project's state file.
+
 ## Callback endpoint adapter
 
 The library is framework-agnostic. In FastAPI, for example:

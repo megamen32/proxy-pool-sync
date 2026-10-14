@@ -123,6 +123,7 @@ class BindingPeerWithFileFallback:
 
 def binding_server(
     address: tuple[str, int], journal: BindingJournal, *, bearer_token: str, allowed_source: str,
+    peer: BindingPeerWithFileFallback | None = None,
 ) -> HTTPServer:
     """Single HTTP handler thread, bounded body and timeout; tokens never enter logs."""
     if address[0] != "127.0.0.1" or len(bearer_token) < 32:
@@ -152,7 +153,9 @@ def binding_server(
             if not self.authorized():
                 return self.reply(401, {"error": "unauthorized"})
             parsed = urlsplit(self.path)
-            if parsed.path != "/v1/bindings":
+            if parsed.path not in {"/v1/bindings", "/v1/peer-bindings"}:
+                return self.reply(404, {"error": "not_found"})
+            if parsed.path == "/v1/peer-bindings" and peer is None:
                 return self.reply(404, {"error": "not_found"})
             if parsed.query:
                 try:
@@ -162,16 +165,26 @@ def binding_server(
                     account = int(query["telegram_user_id"][0])
                     if not 0 < account < 2**63:
                         raise ValueError()
-                    event = journal.preferred(account)
                 except (ValueError, KeyError):
                     return self.reply(400, {"error": "invalid_identity"})
+                try:
+                    event = (peer.preferred(account) if parsed.path == "/v1/peer-bindings"
+                             else journal.preferred(account))
+                except (OSError, ValueError, httpx.HTTPError):
+                    return self.reply(503, {"error": "peer_unavailable"})
                 return self.reply(200, {"binding": json.loads(event.encode()) if event else None})
-            return self.reply(200, {"bindings": [json.loads(e.encode()) for e in journal.preferences()]})
+            try:
+                events = peer.preferences() if parsed.path == "/v1/peer-bindings" else journal.preferences()
+            except (OSError, ValueError, httpx.HTTPError):
+                return self.reply(503, {"error": "peer_unavailable"})
+            return self.reply(200, {"bindings": [json.loads(e.encode()) for e in events]})
 
         def do_POST(self):
             if not self.authorized():
                 return self.reply(401, {"error": "unauthorized"})
-            if self.path != "/v1/bindings":
+            if self.path not in {"/v1/bindings", "/v1/peer-bindings"}:
+                return self.reply(404, {"error": "not_found"})
+            if self.path == "/v1/peer-bindings" and peer is None:
                 return self.reply(404, {"error": "not_found"})
             try:
                 size = int(self.headers.get("Content-Length", "0"))
@@ -180,9 +193,18 @@ def binding_server(
                 event = BindingEvent.decode(self.rfile.read(size).decode())
                 if self.headers.get("Idempotency-Key") != event.event_id:
                     raise ValueError("Idempotency key mismatch")
-                status = journal.receive(event, allowed_source=allowed_source)
+                if self.path == "/v1/peer-bindings":
+                    if event.scope != journal.scope or event.source != journal.source:
+                        raise ValueError("Source does not own this local bridge")
+                    status = "accepted" if peer.deliver(event) else "rejected"
+                else:
+                    status = journal.receive(event, allowed_source=allowed_source)
             except (ValueError, TypeError, UnicodeError):
                 return self.reply(400, {"error": "invalid_binding_event"})
+            except (OSError, httpx.HTTPError):
+                return self.reply(503, {"error": "peer_unavailable"})
+            if status == "rejected":
+                return self.reply(502, {"error": "peer_rejected"})
             return self.reply(200, {"event_id": event.event_id, "status": status, "applied": False})
 
     return HTTPServer(address, Handler)

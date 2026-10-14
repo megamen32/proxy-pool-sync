@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 import hmac
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
+from pathlib import Path
 from urllib.parse import urlsplit, parse_qs
 
 import httpx
@@ -47,6 +48,77 @@ class BindingPeer:
         if event and event.telegram_user_id != telegram_user_id:
             raise ValueError("Native identity mismatch")
         return event
+
+    def preferences(self) -> list[BindingEvent]:
+        """Read the bounded receiver snapshot through the same authenticated API."""
+        response = httpx.get(self.url, timeout=2,
+                             headers={"Authorization": f"Bearer {self.bearer_token}"}, follow_redirects=False)
+        response.raise_for_status()
+        rows = response.json().get("bindings")
+        if not isinstance(rows, list) or len(rows) > 5000:
+            raise ValueError("Incomplete binding snapshot")
+        return [BindingEvent.decode(json.dumps(row)) for row in rows]
+
+
+@dataclass(frozen=True)
+class BindingFilePeer:
+    """Use the receiver's existing journal when its local HTTP bridge is down.
+
+    Both bridges must mount the SAME receiver file; a copy would create split
+    brain. The file is only binding metadata, never a Telegram authorization.
+    """
+
+    path: Path
+    scope: str
+    receiver_source: str
+    sender_source: str
+    journal: BindingJournal = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        if not self.path.is_file() or self.path.is_symlink():
+            raise FileNotFoundError("Existing shared receiver journal required")
+        object.__setattr__(self, "journal", BindingJournal(
+            self.path, scope=self.scope, source=self.receiver_source,
+        ))
+
+    def deliver(self, event: BindingEvent) -> bool:
+        try:
+            status = self.journal.receive(event, allowed_source=self.sender_source)
+        except ValueError:
+            return False
+        return status in {"accepted", "duplicate", "stale"}
+
+    def preferred(self, telegram_user_id: int) -> BindingEvent | None:
+        return self.journal.preferred(telegram_user_id)
+
+    def preferences(self) -> list[BindingEvent]:
+        return self.journal.preferences()
+
+
+@dataclass(frozen=True)
+class BindingPeerWithFileFallback:
+    """Keep HTTP and local-file transports behind the same binding methods."""
+
+    primary: BindingPeer
+    fallback: BindingFilePeer
+
+    def deliver(self, event: BindingEvent) -> bool:
+        try:
+            return self.primary.deliver(event)
+        except httpx.RequestError:
+            return self.fallback.deliver(event)
+
+    def preferred(self, telegram_user_id: int) -> BindingEvent | None:
+        try:
+            return self.primary.preferred(telegram_user_id)
+        except httpx.RequestError:
+            return self.fallback.preferred(telegram_user_id)
+
+    def preferences(self) -> list[BindingEvent]:
+        try:
+            return self.primary.preferences()
+        except httpx.RequestError:
+            return self.fallback.preferences()
 
 
 def binding_server(

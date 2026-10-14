@@ -34,6 +34,8 @@ _EXPORTS = {
     'HttpProxySource': ('source', 'HttpProxySource'),
     'BindingEvent': ('bindings', 'BindingEvent'),
     'BindingJournal': ('bindings', 'BindingJournal'),
+    'BindingFilePeer': ('binding_api', 'BindingFilePeer'),
+    'BindingPeerWithFileFallback': ('binding_api', 'BindingPeerWithFileFallback'),
     'may_apply_preference': ('bindings', 'may_apply_preference'),
     'LocalForward': ('transport', 'LocalForward'),
     'public_proxy_ref': ('transport', 'public_proxy_ref'),

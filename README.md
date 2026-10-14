@@ -124,6 +124,19 @@ observed exit IP after probing and enforce its physical-account capacity in
 `bind`; `AccountProxyValidation(account_unavailable=True, ok=False)` stops
 proxy rotation when the authorization itself has failed.
 
+## File transport when one local bridge is down
+
+`BindingPeerWithFileFallback` has the same `deliver`, `preferred`, and
+`preferences` methods as the authenticated HTTP `BindingPeer`. It falls back
+only on a connection failure and writes to the receiver bridge's **existing**
+`BindingJournal` SQLite file. HTTP rejections do not fall back. Both local
+bridges must see the exact same receiver file; do not configure a copied file,
+because it would split the binding history.
+The file contains proxy references and public exit IPs, never Telegram keys
+or proxy passwords. If the receiver application is down, this confirms only
+durable binding metadata; its native account import still needs a later
+consumer receipt.
+
 ## Callback endpoint adapter
 
 The library is framework-agnostic. In FastAPI, for example:

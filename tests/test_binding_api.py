@@ -83,10 +83,7 @@ def test_local_peer_endpoint_uses_same_api_after_remote_bridge_stops(tmp_path):
     remote_thread.start()
     local = binding_server(
         ('127.0.0.1', 0), a, bearer_token=token_a, allowed_source='tgc',
-        peer=BindingPeerWithFileFallback(
-            BindingPeer(f'http://127.0.0.1:{remote.server_port}/v1/bindings', token_b),
-            BindingFilePeer(b.path, 'fixture', 'tgc', 'autosell'),
-        ),
+        peer=BindingFilePeer(b.path, 'fixture', 'tgc', 'autosell'),
     )
     local_thread = threading.Thread(target=local.serve_forever)
     local_thread.start()

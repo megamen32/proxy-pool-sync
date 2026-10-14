@@ -123,7 +123,7 @@ class BindingPeerWithFileFallback:
 
 def binding_server(
     address: tuple[str, int], journal: BindingJournal, *, bearer_token: str, allowed_source: str,
-    peer: BindingPeerWithFileFallback | None = None,
+    peer: BindingFilePeer | BindingPeerWithFileFallback | None = None,
 ) -> HTTPServer:
     """Single HTTP handler thread, bounded body and timeout; tokens never enter logs."""
     if address[0] != "127.0.0.1" or len(bearer_token) < 32:

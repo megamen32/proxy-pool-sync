@@ -137,11 +137,13 @@ or proxy passwords. If the receiver application is down, this confirms only
 durable binding metadata; its native account import still needs a later
 consumer receipt.
 
-When `binding_server(..., peer=...)` is configured, the application can use
-its **own** loopback bridge at `/v1/peer-bindings` with the same `BindingPeer`
-client and token as `/v1/bindings`. The bridge reaches the other bridge by
-HTTP when available and uses that receiver's existing journal when HTTP is
-down. This keeps peer journal write access inside the two bridge services;
+When `binding_server(..., peer=BindingFilePeer(...))` is configured, the
+application can use its **own** loopback bridge at `/v1/peer-bindings` with
+the same `BindingPeer` client and token as `/v1/bindings`. The local endpoint
+reads the receiver's exact journal directly, avoiding mutual waits between
+single-threaded HTTP bridges. The bridge's background exchange continues to
+use HTTP with the file fallback when that HTTP peer is down. This keeps peer
+journal write access inside the two bridge services;
 neither application needs a mount of the other project's state file.
 
 ## Callback endpoint adapter

@@ -56,14 +56,24 @@ def render_ssh_forwards(alias: str, hop_host: str, forwards: list[LocalForward])
 
 def render_scoped_redirect(
     groups: list[dict], ports: list[int], relay_port: int, *, table: str, exists: bool = False,
+    hop_label: str = "",
 ) -> str:
-    """Atomically replace only the caller's table; never redirect a shared UID."""
+    """Atomically replace only the caller's table; never redirect a shared UID.
+
+    ``hop_label`` — имя реального транспортного хопа для комментария правила
+    nft. Раньше комментарий был зашит как "TGC provider via VUSA", хотя редирект
+    ведёт в redsocks, а тот — в выбранный контроллером хоп (сейчас fin). Врёт
+    комментарий в nft — значит врёт и разбор инцидентов.
+    """
     if not re.fullmatch(r"[a-z][a-z0-9_]{1,31}", table):
         raise ValueError("Invalid owned table")
     if not ports or len(ports) > 8 or any(type(p) is not int or not 1024 <= p <= 65535 for p in ports):
         raise ValueError("Expected bounded provider ports")
     if type(relay_port) is not int or not 1024 <= relay_port <= 65535 or relay_port in ports:
         raise ValueError("Invalid relay port")
+    comment = "TGC provider via " + (hop_label or "egress hop")
+    if len(comment) > 120 or any(ch in comment for ch in '"\\'):
+        comment = "TGC provider via egress hop"
     lines = [f"delete table ip {table}"] if exists else []
     lines += [f"add table ip {table}",
               f"add chain ip {table} output {{ type nat hook output priority -105; policy accept; }}",
@@ -75,7 +85,7 @@ def render_scoped_redirect(
             raise ValueError("Refusing unrelated or broad cgroup")
         lines.append(f'add rule ip {table} output socket cgroupv2 level 2 "{cg}" '
                      f'tcp dport {{ {", ".join(map(str, sorted(set(ports))))} }} '
-                     f'counter redirect to :{relay_port} comment "TGC provider via VUSA"')
+                     f'counter redirect to :{relay_port} comment "{comment}"')
     return "\n".join(lines) + "\n"
 
 

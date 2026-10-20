@@ -65,3 +65,23 @@ def test_transport_only_consumer_does_not_load_unneeded_http_runtime():
         "assert 'httpx' not in sys.modules; assert 'python_socks' not in sys.modules; "
         "assert 'proxy_pool_sync.manager' not in sys.modules"], check=True, timeout=5)
     assert result.returncode == 0
+
+def test_redirect_comment_reflects_actual_hop():
+    """Комментарий правила nft обязан называть РЕАЛЬНЫЙ хоп.
+
+    Раньше был зашит "TGC provider via VUSA", хотя редирект ведёт в redsocks,
+    а тот — в выбранный контроллером хоп (fin). Врёт комментарий — врёт
+    разбор инцидентов.
+    """
+    groups = [{"cgroup": "system.slice/docker-" + "a" * 64 + ".scope"}]
+    rules = render_scoped_redirect(groups, [8085], 17890, table="tgc_egress",
+                                   hop_label="finland-ssh-socks")
+    assert 'comment "TGC provider via finland-ssh-socks"' in rules
+    assert "VUSA" not in rules
+
+def test_redirect_comment_is_sanitised():
+    """Метка хопа не должна ломать правило nft (кавычки/длина)."""
+    groups = [{"cgroup": "system.slice/docker-" + "b" * 64 + ".scope"}]
+    rules = render_scoped_redirect(groups, [8085], 17890, table="tgc_egress",
+                                   hop_label='bad"name\\evil')
+    assert 'comment "TGC provider via egress hop"' in rules

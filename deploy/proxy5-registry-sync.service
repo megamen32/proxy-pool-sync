@@ -1,0 +1,27 @@
+[Unit]
+Description=Сверка инвентаря proxy5 с кабинетом (раз в 10 минут)
+After=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+User=roomhacker
+WorkingDirectory=/home/roomhacker/PycharmProjects/proxy-pool-sync
+Environment=PYTHONPATH=/home/roomhacker/PycharmProjects/proxy-pool-sync/src
+Environment=PROXY5_INVENTORY_DB=/var/lib/proxy5-registry/inventory.db
+Environment=PROXY5_GEOIP_DB=/home/roomhacker/.cloakbrowser/geoip/GeoLite2-City.mmdb
+Environment=PROXY5_IPS_EGRESS=socks5h://127.0.0.1:30881
+ExecStart=/opt/proxy-pool-sync/bin/python -m proxy_pool_sync.proxy5.sync
+MemoryHigh=96M
+MemoryMax=192M
+MemorySwapMax=0
+CPUQuota=20%
+TasksMax=16
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/proxy5-registry /var/log
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

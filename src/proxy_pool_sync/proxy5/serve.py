@@ -21,7 +21,7 @@ import os
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 from . import snapshot as snap
 from .inventory import InventoryStore
@@ -59,8 +59,9 @@ class PoolHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802 — имя задано базовым классом
         path = urlsplit(self.path).path
+        query = parse_qs(urlsplit(self.path).query)
         if path == "/pool":
-            self._serve_pool()
+            self._serve_pool(query)
         elif path == "/pool.json":
             self._serve_json()
         elif path == "/health":
@@ -75,22 +76,75 @@ class PoolHandler(BaseHTTPRequestHandler):
 
     # ---------- маршруты ----------
 
-    def _serve_pool(self) -> None:
+    def _serve_pool(self, query: dict | None = None) -> None:
         path = self.server.pool_path
         try:
             data = path.read_bytes()
         except OSError:
             self._reply(503, self._missing_text(path), "text/plain; charset=utf-8")
             return
-        count = sum(
-            1 for line in data.decode("utf-8", "replace").splitlines() if line.strip()
-        )
+        text = data.decode("utf-8", "replace")
+        wanted = self._country_filter(query)
+        if wanted:
+            text = self._filter_by_country(text, wanted)
+            if not text:
+                self._reply(
+                    404,
+                    f"no addresses for country {wanted}\n".encode(),
+                    "text/plain; charset=utf-8",
+                )
+                return
+        count = sum(1 for line in text.splitlines() if line.strip())
         self._reply(
             200,
-            data,
+            text.encode("utf-8"),
             "text/plain; charset=utf-8",
             {"X-Proxy-Pool-Count": str(count)},
         )
+
+    @staticmethod
+    def _country_filter(query: dict | None) -> str:
+        """Страна из ?country=; поддерживает список через запятую."""
+        if not query:
+            return ""
+        values = query.get("country") or []
+        wanted = ",".join(values).strip().upper()
+        if wanted in {"", "ALL", "ANY"}:
+            return ""
+        return wanted
+
+    def _filter_by_country(self, text: str, wanted: str) -> str:
+        """Оставить только адреса нужных стран (данные — из pool.json)."""
+        wanted_set = {item.strip() for item in wanted.split(",") if item.strip()}
+        by_ip: dict[str, str] = {}
+        try:
+            payload = json.loads(self.server.json_path.read_text())
+        except (OSError, ValueError):
+            return text
+        for item in (
+            payload.get("addresses")
+            or payload.get("proxies")
+            or payload.get("entries")
+            or []
+        ):
+            if not isinstance(item, dict):
+                continue
+            ip = str(item.get("ip") or "")
+            country = str(item.get("country") or "").upper()
+            if ip and country:
+                by_ip[ip] = country
+        if not by_ip:
+            return text
+        keep = []
+        for line in text.splitlines():
+            stripped = line.strip()
+            if not stripped:
+                continue
+            ip = stripped.rsplit(":", 1)[0].rsplit("@", 1)[-1].rsplit("/", 1)[-1]
+            country = by_ip.get(ip)
+            if country is None or country in wanted_set:
+                keep.append(stripped)
+        return "\n".join(keep) + ("\n" if keep else "")
 
     def _serve_json(self) -> None:
         path = self.server.json_path

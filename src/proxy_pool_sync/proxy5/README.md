@@ -114,3 +114,33 @@ sudo systemctl enable --now proxy5-registry-sync.timer
 
 Зависимости `mcp` и `geoip2` стоят в `/opt/proxy-pool-sync` (venv без pip —
 ставить через `uv pip install --python /opt/proxy-pool-sync/bin/python`).
+
+## Раскатка на потребителей
+
+Реестр — единственный источник адресов. Потребители берут пул из его
+выдачи, а на диске у каждого остаётся последний рабочий снимок.
+
+| Потребитель | Как забирает | Файл-fallback |
+|---|---|---|
+| TGC | `PROXY_SYNC_SOURCE_URL=http://127.0.0.1:18102/pool` | `/app/cache/proxies.txt` (свой файл) |
+| Out of Find Client | `AUTOSELL_PROXY_SOURCE_URL=http://127.0.0.1:18102/pool` | `cache/autoseller-proxy5-vusa-canary.txt` |
+| ATV | файл `scrape_fleet/proxies.txt` (перечитывает по mtime) | тот же файл |
+| Video Watching | `/proxy/export` читает снимок реестра | своя БД |
+
+Фильтр `country=non_ru` убран: через хоп маршрут работает целиком, а
+раньше он и не применялся — страна в базе была пуста.
+
+Компоненты:
+
+* `proxy5-registry-sync.timer` — раз в 10 минут снимает пул с кабинета,
+  сверяет гео, пишет `/var/lib/proxy5-registry/pool.txt` и `pool.json`;
+* `proxy5-registry-serve.service` — выдача `http://127.0.0.1:18102`:
+  `/pool`, `/pool.json`, `/health` (только loopback);
+* `proxy5-registry-publish.timer` — раскладывает снимок в приватный каталог
+  ATV (там `0700 root`, кладёт только root).
+
+Зеркала (`PROXY5_POOL_MIRRORS`) пишутся атомарно: временный файл в том же
+каталоге и `os.replace`, читатель никогда не видит полузапись.
+
+Проверено 23.10: при погашенном реестре источник для потребителя отдаёт
+`ConnectError`, а пул-файл сохраняет прежние 2000 адресов.

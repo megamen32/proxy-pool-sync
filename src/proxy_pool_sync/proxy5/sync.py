@@ -4,7 +4,9 @@
   1) снимает текущий пул кабинета и вносит его в инвентарь (ротация не
      теряет историю: исчезнувшие адреса остаются с меткой «история»);
   2) сверяет страну по локальному GeoIP-файлу — независимое второе мнение;
-  3) пишет сводку в stdout и в состояние инвентаря.
+  3) пишет сводку в stdout и в состояние инвентаря;
+  4) сохраняет канонический snapshot пула (текстовый файл со строками
+     `http://<ip>:8085` и JSON-снимок) — его раздаёт HTTP-выдача.
 
 Запись в кабинет отсюда НЕ выполняется: только чтение.
 """
@@ -19,6 +21,7 @@ import time
 from .cabinet import Cabinet, CabinetError, GeoResolver, compare_geo
 from .inventory import InventoryStore
 from .core import history_summary
+from .snapshot import write_snapshot
 
 SERVICE_ID = os.environ.get(
     "PROXY5_SERVICE_ID", "322981eb-ada2-4b95-9322-d025c354eb35"
@@ -55,6 +58,21 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         resolver.close()
 
+    snapshot_state = {"ok": False}
+    try:
+        written = write_snapshot(store)
+        snapshot_state = {
+            "ok": True,
+            "pool_path": written["pool_path"],
+            "json_path": written["json_path"],
+            "count": written["count"],
+        }
+        store.set_meta("last_snapshot_at", json.dumps(written["generated_at"]))
+    except Exception as exc:  # noqa: BLE001 — снимок не должен ронять сверку
+        snapshot_state = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+        store.set_meta("last_snapshot_error", snapshot_state["error"])
+        print(f"Snapshot пула не записан: {snapshot_state['error']}", file=sys.stderr)
+
     summary = history_summary(store.entries())
     payload = {
         "pool_size": len(snapshot),
@@ -62,6 +80,7 @@ def main(argv: list[str] | None = None) -> int:
         "inventory": result,
         "history": summary,
         "geo": geo,
+        "snapshot": snapshot_state,
         "synced_at": time.time(),
     }
     store.set_meta("last_sync_summary", json.dumps(payload))
@@ -84,6 +103,18 @@ def main(argv: list[str] | None = None) -> int:
         "Гео-сверка: проверено {checked}, совпало {agree}, "
         "расхождений {conflict}, неизвестно {unknown}.".format(**geo)
     )
+    if snapshot_state.get("ok"):
+        print(
+            "Snapshot: {count} адресов → {path}".format(
+                count=snapshot_state["count"], path=snapshot_state["pool_path"]
+            )
+        )
+    else:
+        print(
+            "Snapshot: не записан ({error})".format(
+                error=snapshot_state.get("error", "причина неизвестна")
+            )
+        )
     return 0
 
 

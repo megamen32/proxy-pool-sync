@@ -107,6 +107,49 @@ class InventoryStore:
 
     # ---------- запись ----------
 
+    def entries_map(self) -> dict[str, InventoryEntry]:
+        """Инвентарь как словарь ip → запись (для точечных операций)."""
+        return {entry.ip: entry for entry in self.entries()}
+
+    def upsert_historical(
+        self,
+        ip: str,
+        *,
+        port: int | None = None,
+        protocol: str = "http",
+        country: str | None = None,
+        country_source: str | None = None,
+        now: float | None = None,
+    ) -> bool:
+        """Добавить адрес, которого в пуле сейчас нет, но который мы видели раньше.
+
+        Такой адрес — исторический: он не действующий, но принадлежит истории
+        выданных. Возвращает True, если запись была создана.
+        """
+        stamp = now if now is not None else time.time()
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT 1 FROM proxy5_inventory WHERE ip = ?", (ip,)
+            ).fetchone()
+            if row:
+                return False
+            connection.execute(
+                "INSERT INTO proxy5_inventory("
+                "ip, country, country_source, protocol, first_seen, last_seen,"
+                " last_present, present, seen_count, note)"
+                " VALUES(?, ?, ?, ?, ?, ?, NULL, 0, 1, ?)",
+                (
+                    ip,
+                    country,
+                    country_source,
+                    protocol,
+                    stamp,
+                    stamp,
+                    "исторический адрес: найден в накопленной истории БД",
+                ),
+            )
+        return True
+
     def apply_snapshot(self, snapshot: PoolSnapshot, *, now: float | None = None) -> dict:
         """Внести снимок пула; вернуть статистику изменения."""
         stamp = now if now is not None else time.time()
